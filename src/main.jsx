@@ -13,7 +13,9 @@ function App(){
    variant:'wide',
    buildUrl:true,
    providers:[EthereumProvider()],
-   feeConfig:{name:'DEAD PIXELS',fee:0.003,showFeePercentage:true,showFeeTooltip:true},
+   sdkConfig:{
+     apiUrl:`${window.location.origin}/api/lifi`
+   },
    theme:{
      palette:{mode:'dark',primary:{main:'#8b5cf6'},secondary:{main:'#ef4444'},background:{default:'#09090b',paper:'#15111b'}},
      shape:{borderRadius:16},
