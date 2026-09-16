@@ -12,6 +12,8 @@ const hex=n=>'0x'+BigInt(n).toString(16);
 const short=a=>a?`${a.slice(0,6)}…${a.slice(-4)}`:'';
 const fmt=(raw,d=18)=>{try{let s=BigInt(raw||0).toString().padStart(d+1,'0');let a=s.slice(0,-d),b=s.slice(-d).replace(/0+$/,'').slice(0,6);return b?`${a}.${b}`:a}catch{return'0'}};
 const units=(v,d)=>{let[a,b='']=String(v||'0').trim().split('.');b=(b+'0'.repeat(d)).slice(0,d);return(BigInt(a||0)*10n**BigInt(d)+BigInt(b||0)).toString()};
+const pretty=(raw,d=18,max=6)=>{try{const neg=String(raw).startsWith('-');let x=String(raw??'0').replace('-','').padStart(d+1,'0');let a=x.slice(0,-d),b=x.slice(-d).replace(/0+$/,'').slice(0,max);return(neg?'-':'')+a+(b?'.'+b:'')}catch{return String(raw??'—')}};
+const money=x=>{const n=Number(x);return Number.isFinite(n)?'$'+n.toLocaleString(undefined,{maximumFractionDigits:2}):null};
 function normalizeList(x){if(Array.isArray(x))return x;if(Array.isArray(x?.chains))return x.chains;if(Array.isArray(x?.tokens))return x.tokens;if(Array.isArray(x?.data))return x.data;return[]}
 
 function AcrossPanel(){
@@ -25,12 +27,14 @@ function AcrossPanel(){
  const[toToken,setToToken]=useState('');
  const[amount,setAmount]=useState('');
  const[balance,setBalance]=useState('—');
+ const[wrongChain,setWrongChain]=useState(false);
  const[quote,setQuote]=useState(null);
  const[busy,setBusy]=useState(false);
  const[msg,setMsg]=useState('');
 
  async function api(q){const r=await fetch('/api/across?'+new URLSearchParams(q));const j=await r.json();if(!r.ok)throw Error(j.message||j.error||'Across request failed');return j}
  async function connect(){if(!window.ethereum)return setMsg('Install an EVM wallet first.');const a=await window.ethereum.request({method:'eth_requestAccounts'});setAccount(a[0]||'')}
+ async function switchSource(){if(!window.ethereum)return setMsg('Install an EVM wallet first.');try{await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex(fromChain)}]});setMsg('');setTimeout(refreshBalance,250)}catch(e){setMsg(e.message||'Could not switch chain')}}
  useEffect(()=>{api({action:'chains'}).then(x=>setChains(normalizeList(x))).catch(e=>setMsg(e.message))},[]);
  useEffect(()=>{setFromToken('');setQuote(null);api({action:'tokens',chainId:String(fromChain)}).then(x=>setTokens(normalizeList(x))).catch(()=>setTokens([]))},[fromChain]);
  useEffect(()=>{setToToken('');setQuote(null);api({action:'tokens',chainId:String(toChain)}).then(x=>setOutTokens(normalizeList(x))).catch(()=>setOutTokens([]))},[toChain]);
@@ -38,11 +42,12 @@ function AcrossPanel(){
  const tokenSym=t=>t?.symbol||t?.name||short(tokenAddr(t));
  const tokenDec=t=>Number(t?.decimals??18);
  const selected=tokens.find(t=>tokenAddr(t).toLowerCase()===fromToken.toLowerCase());
+ const selectedOut=outTokens.find(t=>tokenAddr(t).toLowerCase()===toToken.toLowerCase());
  async function refreshBalance(){
   if(!account||!selected)return setBalance('—');
   try{
    const cid=await window.ethereum.request({method:'eth_chainId'});
-   if(BigInt(cid)!==BigInt(fromChain)){setBalance('switch chain');return}
+   if(BigInt(cid)!==BigInt(fromChain)){setWrongChain(true);setBalance('—');return} setWrongChain(false)
    let raw;
    if(tokenAddr(selected)===ZERO||selected.isNative) raw=await window.ethereum.request({method:'eth_getBalance',params:[account,'latest']});
    else{
@@ -50,7 +55,7 @@ function AcrossPanel(){
     raw=await window.ethereum.request({method:'eth_call',params:[{to:tokenAddr(selected),data},'latest']});
    }
    setBalance(fmt(raw,tokenDec(selected)));
-  }catch{setBalance('unavailable')}
+  }catch{setWrongChain(false);setBalance('unavailable')}
  }
  useEffect(()=>{refreshBalance()},[account,fromToken,fromChain,tokens]);
  async function getQuote(){
@@ -80,6 +85,12 @@ function AcrossPanel(){
  const chainId=c=>Number(c.chainId??c.id);
  const chainName=c=>c.name||c.chainName||`Chain ${chainId(c)}`;
  const out=quote?.expectedOutputAmount||quote?.outputAmount||quote?.steps?.bridge?.outputAmount||quote?.steps?.destinationSwap?.outputAmount;
+ const outDecimals=Number(selectedOut?.decimals??quote?.outputToken?.decimals??18);
+ const outSymbol=selectedOut?tokenSym(selectedOut):(quote?.outputToken?.symbol||'');
+ const formattedOut=out!=null?pretty(out,outDecimals,6):null;
+ const quoteTime=quote?.estimatedFillTimeSec??quote?.estimatedFillTime??quote?.estimatedTime;
+ const totalFeeUsd=quote?.fees?.total?.amountUsd??quote?.totalFeeUsd??quote?.fees?.totalFeeUsd;
+ const outputUsd=quote?.expectedOutputAmountUsd??quote?.outputAmountUsd??quote?.outputUsd;
  return <div className="acrossBox">
   <div className="acrossTop"><div><small>ACROSS SWAP API</small><strong>Direct Across route</strong></div><button onClick={connect}>{account?short(account):'Connect wallet'}</button></div>
   <div className="two">
@@ -87,12 +98,21 @@ function AcrossPanel(){
    <label>To<select value={toChain} onChange={e=>setToChain(+e.target.value)}>{chains.map(c=><option key={chainId(c)} value={chainId(c)}>{chainName(c)}</option>)}</select></label>
   </div>
   <div className="two">
-   <label>Pay token<select value={fromToken} onChange={e=>setFromToken(e.target.value)}><option value="">Select token</option>{tokens.map((t,i)=><option key={tokenAddr(t)+i} value={tokenAddr(t)}>{tokenSym(t)}</option>)}</select><small>Balance: {balance}</small></label>
+   <label>Pay token<select value={fromToken} onChange={e=>setFromToken(e.target.value)}><option value="">Select token</option>{tokens.map((t,i)=><option key={tokenAddr(t)+i} value={tokenAddr(t)}>{tokenSym(t)}</option>)}</select><small>Balance: {balance} {selected?tokenSym(selected):''}</small>{wrongChain&&<button type="button" className="switchBtn" onClick={switchSource}>Switch to {chains.find(c=>chainId(c)===fromChain)?chainName(chains.find(c=>chainId(c)===fromChain)):'source chain'}</button>}</label>
    <label>Receive token<select value={toToken} onChange={e=>setToToken(e.target.value)}><option value="">Select token</option>{outTokens.map((t,i)=><option key={tokenAddr(t)+i} value={tokenAddr(t)}>{tokenSym(t)}</option>)}</select></label>
   </div>
   <label>Amount<input inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>{setAmount(e.target.value);setQuote(null)}}/></label>
   {!quote?<button className="primary" disabled={busy} onClick={getQuote}>{busy?'Checking route…':'Get Across route'}</button>:
-   <div className="quote"><b>Across route available</b>{out&&<span>Estimated output: {out}</span>}<span>DEAD PIXELS fee: 0.30%</span><button className="primary" disabled={busy} onClick={execute}>{busy?'Waiting for wallet…':'Bridge with Across'}</button></div>}
+   <div className="quote"><b>Across route available</b>
+    <div className="breakdown">
+      <span><i>You send</i><strong>{amount} {selected?tokenSym(selected):''}</strong></span>
+      {formattedOut&&<span><i>You receive</i><strong>{formattedOut} {outSymbol}</strong></span>}
+      {outputUsd&&<span><i>Estimated value</i><strong>{money(outputUsd)}</strong></span>}
+      <span><i>DEAD PIXELS fee</i><strong>0.30%</strong></span>
+      {totalFeeUsd&&<span><i>Provider / network fees</i><strong>{money(totalFeeUsd)}</strong></span>}
+      {quoteTime&&<span><i>Estimated time</i><strong>~{Number(quoteTime)>=60?Math.ceil(Number(quoteTime)/60)+' min':Math.ceil(Number(quoteTime))+' sec'}</strong></span>}
+    </div>
+    <button className="primary" disabled={busy||wrongChain} onClick={execute}>{wrongChain?'Switch source chain first':busy?'Waiting for wallet…':'Bridge with Across'}</button></div>}
   {msg&&<div className="msg">{msg}</div>}
   <div className="fine">Only routes returned live by Across are executable. Quotes are never cached.</div>
  </div>
