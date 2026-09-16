@@ -30,3 +30,11 @@ work without exposing the private key.
 `npm run dev`
 
 Do not put the LI.FI API key in any `VITE_*` variable or frontend source file.
+
+## V3 wallet balance behavior
+The embedded LI.FI Widget is responsible for wallet connection and source-token balances.
+After a wallet is connected, the selected source token balance is shown/refreshed by the
+Widget automatically; there is no separate "Check Balance" button and this build does not
+invent or cache a fake balance.
+
+For custom/private RPCs, do not put secret RPC keys into frontend VITE_* variables.

@@ -44,6 +44,7 @@ function App(){
    </aside>
    <div className="card"><div className="cardHead"><div><small>BRIDGE / SWAP</small><strong>Cross-chain execution</strong></div><span>LIVE</span></div>
     <LiFiWidget integrator={INTEGRATOR} config={config}/>
+    <div className="balanceNote">Connect wallet → token balance is detected automatically</div>
     <div className="powered">POWERED BY <b>LI.FI</b> · INTEGRATOR <b>{INTEGRATOR}</b></div>
    </div>
   </section>
