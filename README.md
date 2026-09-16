@@ -90,3 +90,16 @@ does not require the wallet to hold the quoted amount; execution does.
   without the fee. If that succeeds, the UI explicitly says ROUTE FOUND but
   disables execution. This isolates LI.FI partner-fee configuration from routing.
 - V9 never silently executes a fee-less fallback route.
+
+
+## V10 — Advanced Routes + Jumper-style UX
+This version stops using `/quote` for discovery. It uses LI.FI's official
+`POST /v1/advanced/routes`, which is designed to return multiple route options.
+It requests `executionType: all` so transaction and messaging/intent routes can
+be considered, waits longer for multiple providers, and shows up to four routes.
+
+The UI is rebuilt toward a compact swap/bridge experience: route cards,
+best-return selection, alternatives, ETA/tool path, and a purple exchange panel.
+
+Execution remains LI.FI SDK based. The 0.30% integrator fee is requested first.
+A fee-less retry is discovery-only and cannot be executed.

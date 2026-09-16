@@ -33,6 +33,8 @@ function AcrossPanel(){
  const[balance,setBalance]=useState('—');
  const[wrongChain,setWrongChain]=useState(false);
  const[quote,setQuote]=useState(null);
+ const[routes,setRoutes]=useState([]);
+ const[selectedRoute,setSelectedRoute]=useState(0);
  const[busy,setBusy]=useState(false);
  const[msg,setMsg]=useState('');
 
@@ -213,6 +215,8 @@ function LiFiNativePanel(){
  const[amount,setAmount]=useState('');
  const[balance,setBalance]=useState('—');
  const[quote,setQuote]=useState(null);
+ const[routes,setRoutes]=useState([]);
+ const[selectedRoute,setSelectedRoute]=useState(0);
  const[busy,setBusy]=useState(false);
  const[msg,setMsg]=useState('');
  const[progress,setProgress]=useState([]);
@@ -307,20 +311,26 @@ function LiFiNativePanel(){
  async function getQuoteNow(){
    if(!account)return setMsg('Connect wallet first.');
    if(!fromT||!toT||!amount||Number(amount)<=0)return setMsg('Choose tokens and enter an amount.');
-   setBusy(true);setMsg('');setQuote(null);setProgress([]);
+   setBusy(true);setMsg('');setQuote(null);setRoutes([]);setSelectedRoute(0);setProgress([]);
    try{
-     const q=await api({
-       action:'quote',
-       fromChain:String(fromChain),toChain:String(toChain),
-       fromToken:fromT.address,toToken:toT.address,
-       fromAmount:units(amount,Number(fromT.decimals||18)),
-       fromAddress:account,toAddress:account
+     const r=await fetch('/api/lifi?action=routes',{
+       method:'POST',headers:{'content-type':'application/json'},
+       body:JSON.stringify({
+         fromChainId:fromChain,toChainId:toChain,
+         fromTokenAddress:fromT.address,toTokenAddress:toT.address,
+         fromAmount:units(amount,Number(fromT.decimals||18)),
+         fromAddress:account,toAddress:account
+       })
      });
-     setQuote(q);
+     const j=await r.json();
+     if(!r.ok)throw Error(j?.message||j?.errors?.[0]?.message||`LI.FI routes failed (${r.status})`);
+     const rr=Array.isArray(j?.routes)?j.routes:[];
+     if(!rr.length)throw Error(j?.unavailableRoutes?.[0]?.reason||'No live LI.FI routes returned.');
+     const marked=rr.map(x=>({...x,_deadPixels:j._deadPixels||{feeApplied:true}}));
+     setRoutes(marked);setQuote(marked[0]);
    }catch(e){setMsg(e?.message||'No executable LI.FI route returned.')}
    finally{setBusy(false)}
  }
-
  function viemChain(id){
    const c=chainObj(id);
    const urls=(c?.metamask?.rpcUrls||c?.rpcUrls||c?.rpc||[]).filter(Boolean);
@@ -353,7 +363,7 @@ function LiFiNativePanel(){
        providers:[evm],
        routeOptions:{fee:0.003}
      });
-     const route=convertQuoteToRoute(quote);
+     const route=quote?.steps?quote:convertQuoteToRoute(quote);
      const result=await executeRoute(client,route,{
        updateRouteHook:r=>{
          const states=(r?.steps||[]).flatMap(st=>(st.execution?.process||[]).map(p=>`${p.type||st.tool||'step'} · ${p.status||'pending'}`));
@@ -370,13 +380,15 @@ function LiFiNativePanel(){
  }
 
  const feeBlocked=quote?._deadPixels?.routeRecovered===true;
- const outAmount=quote?.estimate?.toAmount?pretty(quote.estimate.toAmount,Number(toT?.decimals||18),6):'—';
- const gasUSD=(quote?.estimate?.gasCosts||[]).reduce((a,x)=>a+Number(x.amountUSD||0),0);
+ const outRaw=quote?.toAmount||quote?.estimate?.toAmount;
+ const outAmount=outRaw?pretty(outRaw,Number(toT?.decimals||18),6):'—';
+ const gasUSD=Number(quote?.gasCostUSD||0)||(quote?.estimate?.gasCosts||[]).reduce((a,x)=>a+Number(x.amountUSD||0),0);
  const feeUSD=(quote?.estimate?.feeCosts||[]).reduce((a,x)=>a+Number(x.amountUSD||0),0);
- const eta=quote?.estimate?.executionDuration;
+ const eta=quote?.steps?.reduce((a,x)=>a+Number(x.estimate?.executionDuration||0),0)||quote?.estimate?.executionDuration;
+ const routeTool=(quote?.steps||[]).map(x=>x.toolDetails?.name||x.tool).filter(Boolean).join(' → ')||quote?.toolDetails?.name||quote?.tool||'LI.FI';
  return <div className="acrossBox lifiNative">
-   <div className="acrossTop"><div><small>LI.FI NATIVE SDK / LIVE API</small><strong>Any supported EVM chain ↔ any supported EVM chain</strong></div><button onClick={connect}>{account?short(account):'Connect wallet'}</button></div>
-   <div className="circleLive"><i/> DIRECT LI.FI ROUTING · NO EMBEDDED WIDGET</div>
+   <div className="acrossTop"><div><small>SWAP & BRIDGE</small><strong>Best cross-chain routes</strong></div><button onClick={connect}>{account?short(account):'Connect wallet'}</button></div>
+   <div className="circleLive"><i/> LIVE ROUTES · LI.FI + INTENTS + BRIDGES</div>
    <div className="two">
     <label>From chain<select value={fromChain} onChange={e=>setFromChain(Number(e.target.value))}>{chains.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
     <label>To chain<select value={toChain} onChange={e=>setToChain(Number(e.target.value))}>{chains.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
@@ -386,12 +398,21 @@ function LiFiNativePanel(){
     <label>To token<select value={toToken} onChange={e=>{setToToken(e.target.value);setQuote(null)}}>{toTokens.map(t=><option key={t.address} value={t.address}>{t.symbol} · {t.name}</option>)}</select></label>
    </div>
    <label>Amount <span className="bal">Balance: {balance} {fromT?.symbol||''}</span><input inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>{setAmount(e.target.value);setQuote(null)}}/></label>
-   {!quote?<button className="primary" disabled={busy} onClick={getQuoteNow}>{busy?'Finding live LI.FI route…':'Find best live route'}</button>:
-    <div className="quote">
+   {!quote?<button className="primary" disabled={busy} onClick={getQuoteNow}>{busy?'Finding live LI.FI route…':'Review routes'}</button>:
+    <div className="quote jumperQuote">
       <b>{fromT?.symbol} on {chainName(fromChain)} → {toT?.symbol} on {chainName(toChain)}</b>
+      {routes.length>1&&<div className="routeChoices">{routes.slice(0,4).map((r,i)=>{
+        const raw=r.toAmount||r.estimate?.toAmount;
+        const amt=raw?pretty(raw,Number(toT?.decimals||18),6):'—';
+        const tools=(r.steps||[]).map(x=>x.toolDetails?.name||x.tool).filter(Boolean).join(' → ')||'LI.FI';
+        const sec=(r.steps||[]).reduce((a,x)=>a+Number(x.estimate?.executionDuration||0),0);
+        return <button key={r.id||i} className={selectedRoute===i?'routePick active':'routePick'} onClick={()=>{setSelectedRoute(i);setQuote(routes[i])}}>
+          <span>{i===0?'Best Return':i===1?'Fast Alternative':'Route '+(i+1)}</span><strong>{amt} {toT?.symbol}</strong><small>{tools}{sec?` · ~${sec}s`:''}</small>
+        </button>
+      })}</div>}
       <div className="breakdown">
        <span><i>Receive</i><strong>{outAmount} {toT?.symbol}</strong></span>
-       <span><i>Route</i><strong>{quote.toolDetails?.name||quote.tool||'LI.FI'}</strong></span>
+       <span><i>Route</i><strong>{routeTool}</strong></span>
        <span><i>Gas + provider fees</i><strong>{money(gasUSD+feeUSD)||'See wallet'}</strong></span>
        <span><i>ETA</i><strong>{eta?`~${eta}s`:'Live estimate'}</strong></span>
       </div>
