@@ -5,6 +5,7 @@ import{EthereumProvider}from'@lifi/widget-provider-ethereum';
 import'./style.css';
 
 const INTEGRATOR='dead-pixels-bridge';
+const FRIENDS='https://opensea.io/collection/friends-pixels/overview';
 
 function App(){
  const config=useMemo(()=>({
@@ -12,13 +13,7 @@ function App(){
    variant:'wide',
    buildUrl:true,
    providers:[EthereumProvider()],
-   feeConfig:{
-     name:'DEAD PIXELS',
-     fee:0.003,
-     showFeePercentage:true,
-     showFeeTooltip:true
-   },
-   walletConfig:{forceInternalWalletManagement:true},
+   feeConfig:{name:'DEAD PIXELS',fee:0.003,showFeePercentage:true,showFeeTooltip:true},
    theme:{
      palette:{mode:'dark',primary:{main:'#8b5cf6'},secondary:{main:'#ef4444'},background:{default:'#09090b',paper:'#15111b'}},
      shape:{borderRadius:16},
@@ -28,11 +23,23 @@ function App(){
    }
  }),[]);
  return <main>
-   <header className="nav"><a className="brand" href="/"><span className="mark">DP</span><span>DEAD PIXELS <b>BRIDGE</b></span></a><div className="status"><i/> LIVE ROUTING</div></header>
-   <section className="hero"><div className="eyebrow">CROSS-CHAIN LIQUIDITY</div><h1>Move assets.<br/><span>Without the mess.</span></h1><p>Professional EVM cross-chain routing with native chain and token logos, route comparison, balances, approvals and transaction progress.</p><div className="pills"><span>LI.FI</span><span>INTENTS</span><span>BRIDGES</span><span>EVM</span></div></section>
-   <section className="bridgeShell"><div className="bridgeHead"><div><small>DEAD PIXELS ROUTER</small><strong>Swap & Bridge</strong></div><span className="official">LI.FI ROUTING</span></div><LiFiWidget integrator={INTEGRATOR} config={config}/></section>
-   <section className="proof"><div><b>01</b><strong>Official routing stack</strong><span>The Widget uses LI.FI's native routing stack instead of our old custom quote proxy.</span></div><div><b>02</b><strong>Native asset UI</strong><span>Chain icons, token logos, balances, route cards and execution history stay native.</span></div><div><b>03</b><strong>0.30% integrator fee</strong><span>Configured through LI.FI Widget feeConfig.</span></div></section>
-   <footer><span>DEAD PIXELS LABS</span><span>Non-custodial cross-chain interface</span></footer>
+   <header className="nav">
+     <a className="brand" href="/"><span className="mark">DP</span><span>DEAD PIXELS <b>BRIDGE</b></span></a>
+     <nav className="links"><a href={FRIENDS} target="_blank" rel="noreferrer">FRIENDS PIXELS ↗</a><span className="status"><i/> LIVE</span></nav>
+   </header>
+   <section className="hero">
+     <div className="eyebrow">DEAD PIXELS LABS</div>
+     <h1>Bridge anywhere.<br/><span>One route.</span></h1>
+     <p>Cross-chain swaps and transfers in one interface. Compare available routes, choose your destination, and execute directly from your wallet.</p>
+   </section>
+   <section className="bridgeShell">
+     <LiFiWidget integrator={INTEGRATOR} config={config}/>
+   </section>
+   <section className="collection">
+     <div><small>DEAD PIXELS LABS COLLECTION</small><h2>FRIENDS PIXELS</h2><p>Explore the collection on OpenSea.</p></div>
+     <a href={FRIENDS} target="_blank" rel="noreferrer">VIEW COLLECTION ↗</a>
+   </section>
+   <footer><span>DEAD PIXELS LABS</span><span>Cross-chain interface · Non-custodial</span></footer>
  </main>
 }
 createRoot(document.getElementById('root')).render(<App/>);
