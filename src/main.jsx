@@ -35,6 +35,7 @@ function App(){
      <p>Cross-chain swaps and transfers in one interface. Compare available routes, choose your destination, and execute directly from your wallet.</p>
    </section>
    <section className="bridgeShell">
+     <div className="arcGasNote"><strong>ARC GAS NOTE</strong><span>Arc pays network gas in USDC. When sending from Arc, do not empty the wallet with MAX — leave a small USDC reserve for approval and bridge gas.</span></div>
      <LiFiWidget integrator={INTEGRATOR} config={config}/>
    </section>
    <section className="collection">
