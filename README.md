@@ -70,3 +70,13 @@ Regression tests after deployment:
 5. Wallet balance must populate after selecting source token
 
 Do not announce a route as available unless the live LI.FI quote returns it.
+
+
+## V8 critical quote fix
+V7 sent `order=RECOMMENDED` to LI.FI `/v1/quote`. That value is not valid for
+the quote endpoint. LI.FI currently documents only `FASTEST` and `CHEAPEST`.
+V8 uses `order=CHEAPEST` and returns the original LI.FI API error details to
+the UI/API response instead of masking them.
+
+Note: a displayed zero source-token balance can be correct. Route discovery
+does not require the wallet to hold the quoted amount; execution does.

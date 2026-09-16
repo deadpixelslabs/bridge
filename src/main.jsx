@@ -399,7 +399,7 @@ function LiFiNativePanel(){
     </div>}
    {progress.length>0&&<div className="circleEvents">{progress.map((x,i)=><span key={i}>{x}</span>)}</div>}
    {msg&&<div className="msg">{msg}</div>}
-   <div className="fine">Chains, tokens and quotes come from LI.FI live APIs. Balance is read directly from the selected source chain through your connected wallet.</div>
+   <div className="fine">Chains, tokens and quotes come from LI.FI live APIs. Balance is read directly on the selected source chain. Quotes can still be discovered even when the connected wallet has insufficient funds.</div>
  </div>
 }
 
