@@ -1,6 +1,8 @@
 import React,{useEffect,useMemo,useState}from'react';
 import ReactDOM from'react-dom/client';
 import{LiFiWidget}from'@lifi/widget';
+import{BridgeKit}from'@circle-fin/bridge-kit';
+import{createViemAdapterFromProvider}from'@circle-fin/adapter-viem-v2';
 import'./style.css';
 
 const INTEGRATOR='dead-pixels-bridge';
@@ -118,15 +120,93 @@ function AcrossPanel(){
  </div>
 }
 
+
+function CirclePanel(){
+ const[account,setAccount]=useState('');
+ const[chains,setChains]=useState([]);
+ const[fromChain,setFromChain]=useState('Base');
+ const[toChain,setToChain]=useState('');
+ const[amount,setAmount]=useState('');
+ const[estimate,setEstimate]=useState(null);
+ const[busy,setBusy]=useState(false);
+ const[msg,setMsg]=useState('');
+ const[events,setEvents]=useState([]);
+ const kit=useMemo(()=>new BridgeKit(),[]);
+ const arc=chains.find(c=>!c.isTestnet&&(Number(c.chainId)===5042||String(c.chain).toLowerCase()==='arc'||String(c.name||'').toLowerCase()==='arc'));
+
+ useEffect(()=>{let dead=false;(async()=>{try{
+   const all=await kit.getSupportedChains();
+   const main=all.filter(c=>c.isTestnet===false);
+   if(!dead){setChains(main);const a=main.find(c=>Number(c.chainId)===5042||String(c.chain).toLowerCase()==='arc'||String(c.name||'').toLowerCase()==='arc');if(a)setToChain(a.chain)}
+ }catch(e){if(!dead)setMsg('Circle Bridge Kit: '+(e.message||'could not load supported chains'))}})();return()=>{dead=true}},[kit]);
+
+ async function connect(){
+  if(!window.ethereum)return setMsg('Install an EVM wallet first.');
+  try{const a=await window.ethereum.request({method:'eth_requestAccounts'});setAccount(a[0]||'');setMsg('')}catch(e){setMsg(e.message||'Wallet connection failed')}
+ }
+ async function adapter(){if(!window.ethereum)throw Error('EVM wallet not found');return createViemAdapterFromProvider({provider:window.ethereum})}
+ const selectedFrom=chains.find(c=>c.chain===fromChain);
+ async function switchSource(){
+  if(!selectedFrom?.chainId)return;
+  try{await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex(selectedFrom.chainId)}]})}
+  catch(e){setMsg(e.message||'Switch chain failed')}
+ }
+ async function doEstimate(){
+  if(!account)return setMsg('Connect wallet first.');
+  if(!fromChain||!toChain||!amount||Number(amount)<=0)return setMsg('Choose a route and enter an amount.');
+  setBusy(true);setMsg('');setEstimate(null);
+  try{
+   const a=await adapter();
+   const r=await kit.estimate({from:{adapter:a,chain:fromChain},to:{adapter:a,chain:toChain},amount});
+   setEstimate(r);
+  }catch(e){setMsg(e.message||'Circle route unavailable')}finally{setBusy(false)}
+ }
+ async function bridge(){
+  if(!estimate)return;
+  setBusy(true);setMsg('');setEvents([]);
+  const handler=e=>{const method=e?.method||e?.name||'bridge';const state=e?.values?.state||e?.state||'';setEvents(v=>[...v.slice(-5),`${method}${state?' · '+state:''}`])};
+  try{
+   await switchSource();
+   const a=await adapter();
+   kit.on('*',handler);
+   const r=await kit.bridge({from:{adapter:a,chain:fromChain},to:{adapter:a,chain:toChain},amount});
+   const bad=r?.steps?.find(x=>x.state==='error');
+   if(bad)throw Error(bad.errorMessage||'Bridge stopped during '+bad.name);
+   setMsg(r?.state==='success'?'USDC bridge completed successfully.':'Bridge submitted. Follow the progress below.');
+   setEstimate(null);
+  }catch(e){setMsg(e.message||'Circle bridge failed')}finally{try{kit.off('*',handler)}catch{}setBusy(false)}
+ }
+ const cname=c=>c?.name||String(c?.chain||'').replaceAll('_',' ');
+ return <div className="acrossBox circleBox">
+   <div className="acrossTop"><div><small>CIRCLE CCTP / BRIDGE KIT</small><strong>Native USDC → ARC</strong></div><button onClick={connect}>{account?short(account):'Connect wallet'}</button></div>
+   <div className="circleLive">{arc?<><i/> ARC MAINNET DETECTED LIVE BY CIRCLE SDK</>:<>ARC MAINNET NOT YET RETURNED BY SDK</>}</div>
+   <div className="two">
+    <label>From<select value={fromChain} onChange={e=>{setFromChain(e.target.value);setEstimate(null)}}>{chains.filter(c=>c.chain!==toChain).map(c=><option key={c.chain} value={c.chain}>{cname(c)}</option>)}</select></label>
+    <label>To<select value={toChain} onChange={e=>{setToChain(e.target.value);setEstimate(null)}}>{chains.map(c=><option key={c.chain} value={c.chain}>{cname(c)}</option>)}</select></label>
+   </div>
+   <label>Asset<input value="USDC" disabled/></label>
+   <label>Amount<input inputMode="decimal" placeholder="0.00 USDC" value={amount} onChange={e=>{setAmount(e.target.value);setEstimate(null)}}/></label>
+   {!estimate?<button className="primary circlePrimary" disabled={busy||!arc} onClick={doEstimate}>{busy?'Checking Circle…':arc?'Get Circle quote':'Waiting for Arc support'}</button>:
+    <div className="quote circleQuote"><b>Circle CCTP route available</b>
+      <div className="breakdown"><span><i>You send</i><strong>{amount} USDC</strong></span><span><i>Destination</i><strong>{cname(chains.find(c=>c.chain===toChain))}</strong></span><span><i>Asset received</i><strong>Native USDC</strong></span></div>
+      <div className="mainnetWarn">MAINNET · Review chain, amount and recipient in your wallet before signing. Transfers are irreversible.</div>
+      <button className="primary circlePrimary" disabled={busy} onClick={bridge}>{busy?'Bridge in progress…':'Confirm & Bridge USDC'}</button>
+    </div>}
+   {events.length>0&&<div className="circleEvents">{events.map((e,i)=><span key={i}>{e}</span>)}</div>}
+   {msg&&<div className="msg">{msg}</div>}
+   <div className="fine">Powered by Circle CCTP. Native USDC burn-and-mint; no wrapped USDC. Circle route availability is discovered at runtime.</div>
+ </div>
+}
+
 function App(){
- const[provider,setProvider]=useState('lifi');
+ const[provider,setProvider]=useState('circle');
  const config=useMemo(()=>({appearance:'dark',variant:'compact',fromChain:RH,toChain:ARC,buildUrl:true,routePriority:'RECOMMENDED',feeConfig:{fee:0.003,name:'DEAD PIXELS fee',showFeePercentage:true,showFeeTooltip:true},theme:{container:{borderRadius:'22px',boxShadow:'0 24px 80px rgba(0,0,0,.55)'},palette:{primary:{main:'#ff2b2b'},secondary:{main:'#fff'}},shape:{borderRadius:14,borderRadiusSecondary:10},typography:{fontFamily:'Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'}}}),[]);
  return <main className="shell">
   <header className="top"><a className="brand" href="/"><img src="/favicon.svg"/><span>DEAD PIXELS <b>BRIDGE</b></span></a><div className="headerActions"><a className="friendsLink" href="https://opensea.io/collection/friends-pixels/overview" target="_blank" rel="noopener noreferrer">FRIENDS PIXELS ↗</a><div className="secure"><i/> NON-CUSTODIAL</div></div></header>
-  <section className="hero"><div className="eyebrow">DEAD PIXELS LABS / CROSS-CHAIN</div><h1>BRIDGE THE<br/><em>GLITCH.</em></h1><p>Two live routing engines. Your wallet stays in control.</p><div className="route"><span>LI.FI</span><b>+</b><span>Across</span><small>live route discovery</small></div></section>
-  <section className="layout"><aside><div><label>01</label><h3>Two providers</h3><p>Choose LI.FI aggregation or query Across directly.</p></div><div><label>02</label><h3>0.30% platform fee</h3><p>Integrator fee is configured on both providers. Network/provider costs remain separate.</p></div><div><label>03</label><h3>Live only</h3><p>No executable quote means no bridge transaction is offered.</p></div></aside>
-   <div className="card"><div className="providerTabs"><button className={provider==='lifi'?'active':''} onClick={()=>setProvider('lifi')}>LI.FI</button><button className={provider==='across'?'active':''} onClick={()=>setProvider('across')}>ACROSS</button></div>
-    {provider==='lifi'?<><LiFiWidget integrator={INTEGRATOR} config={config}/><div className="powered">POWERED BY <b>LI.FI</b> · {INTEGRATOR}</div></>:<AcrossPanel/>}
+  <section className="hero"><div className="eyebrow">DEAD PIXELS LABS / CROSS-CHAIN</div><h1>BRIDGE THE<br/><em>GLITCH.</em></h1><p>Three bridge engines. Circle CCTP brings native USDC routing to ARC.</p><div className="route"><span>Circle</span><b>+</b><span>LI.FI</span><b>+</b><span>Across</span><small>live route discovery</small></div></section>
+  <section className="layout"><aside><div><label>01</label><h3>Three providers</h3><p>Circle CCTP for native USDC, plus LI.FI and Across routing.</p></div><div><label>02</label><h3>Native USDC to ARC</h3><p>Circle CCTP burns USDC on the source chain and mints native USDC on the destination.</p></div><div><label>03</label><h3>Live only</h3><p>No executable quote means no bridge transaction is offered.</p></div></aside>
+   <div className="card"><div className="providerTabs three"><button className={provider==='circle'?'active circleActive':''} onClick={()=>setProvider('circle')}>CIRCLE</button><button className={provider==='lifi'?'active':''} onClick={()=>setProvider('lifi')}>LI.FI</button><button className={provider==='across'?'active':''} onClick={()=>setProvider('across')}>ACROSS</button></div>
+    {provider==='circle'?<CirclePanel/>:provider==='lifi'?<><LiFiWidget integrator={INTEGRATOR} config={config}/><div className="powered">POWERED BY <b>LI.FI</b> · {INTEGRATOR}</div></>:<AcrossPanel/>}
    </div>
   </section>
   <footer><strong>DEAD PIXELS LABS</strong><p>Cross-chain transactions involve smart-contract, liquidity, slippage and third-party provider risk. Verify every transaction before signing.</p><code>{TREASURY.slice(0,8)}…{TREASURY.slice(-6)}</code></footer>

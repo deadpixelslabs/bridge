@@ -11,3 +11,14 @@
 .friendsLink{display:inline-flex;align-items:center;justify-content:center;border:1px solid #ff2b2b;background:#150808;color:#fff;text-decoration:none;border-radius:10px;padding:9px 12px;font-size:10px;font-weight:900;letter-spacing:.08em;transition:.18s ease}
 .friendsLink:hover{background:#ff2b2b;transform:translateY(-1px)}
 @media(max-width:650px){.headerActions{gap:6px}.friendsLink{font-size:8px;padding:8px}.secure{display:none}}
+
+.providerTabs.three{grid-template-columns:repeat(3,1fr)}
+.providerTabs .circleActive{background:#169cff!important;border-color:#169cff!important}
+.circleLive{display:flex;align-items:center;gap:7px;border:1px solid #153b54;background:#07131b;color:#7acbff;border-radius:10px;padding:9px 11px;font-size:9px;font-weight:900;letter-spacing:.06em;margin-bottom:8px}
+.circleLive i{width:7px;height:7px;border-radius:50%;background:#23d18b;box-shadow:0 0 10px #23d18b}
+.circlePrimary{background:#169cff}
+.circleQuote{border-color:#17405a;background:#07131b}
+.mainnetWarn{margin:10px 0 3px;border:1px solid #5b3b13;background:#171006;color:#e5b35f;border-radius:9px;padding:9px;font-size:9px;line-height:1.45}
+.circleEvents{margin-top:10px;border:1px solid #222;border-radius:10px;padding:9px;background:#080808}
+.circleEvents span{display:block;color:#999;font-size:9px;padding:2px 0}
+@media(max-width:650px){.providerTabs.three{grid-template-columns:repeat(3,1fr)}}

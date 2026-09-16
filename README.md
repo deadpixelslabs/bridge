@@ -41,3 +41,11 @@ Required Vercel Production env vars:
 Across credentials are used only in `/api/across.js`. The browser never receives the API key.
 Across quotes force `integratorId` server-side and a 0.30% `appFee` to the DEAD PIXELS treasury.
 The UI discovers Across-supported chains/tokens dynamically; unsupported routes do not produce transactions.
+
+
+## V5 — Circle CCTP / Arc mainnet
+- Adds a Circle tab using official `@circle-fin/bridge-kit` + `@circle-fin/adapter-viem-v2`.
+- Mainnet chains are discovered at runtime with `BridgeKit.getSupportedChains()`; Arc is enabled only if the SDK returns Arc mainnet / chain ID 5042.
+- Uses the connected EIP-1193 browser wallet. No private key and no Circle API key are embedded.
+- Circle flow is native USDC burn-and-mint via CCTP and shows explicit mainnet confirmation before execution.
+- LI.FI and Across remain available.
