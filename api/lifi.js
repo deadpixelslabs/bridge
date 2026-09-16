@@ -1,65 +1,51 @@
-const BASE='https://li.quest/v1';
-const INTEGRATOR='dead-pixels-bridge';
-function qs(obj){return new URLSearchParams(Object.entries(obj).filter(([,v])=>v!==undefined&&v!==null&&v!==''))}
-async function bodyOf(r){const t=await r.text();try{return JSON.parse(t)}catch{return {message:t||'Invalid LI.FI response'}}}
+const UPSTREAM='https://li.quest/v1';
+
+function appendQuery(searchParams,key,value){
+  if(value===undefined||value===null||key==='path') return;
+  if(Array.isArray(value)){
+    for(const item of value) searchParams.append(key,String(item));
+  }else{
+    searchParams.append(key,String(value));
+  }
+}
+
 export default async function handler(req,res){
- try{
-  const q=req.query||{};
-  const headers={accept:'application/json'};
-  if(process.env.LIFI_API_KEY)headers['x-lifi-api-key']=process.env.LIFI_API_KEY;
-  res.setHeader('Cache-Control','no-store');
-
-  if(q.action==='chains'){
-    const r=await fetch(BASE+'/chains?'+qs({chainTypes:'EVM'}),{headers});
-    return res.status(r.status).json(await bodyOf(r));
+  if(req.method==='OPTIONS'){
+    res.setHeader('Allow','GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    return res.status(204).end();
   }
-  if(q.action==='tokens'){
-    const r=await fetch(BASE+'/tokens?'+qs({chains:q.chainId,chainTypes:'EVM'}),{headers});
-    return res.status(r.status).json(await bodyOf(r));
-  }
-  if(q.action==='routes'){
-    if(req.method!=='POST')return res.status(405).json({message:'POST required'});
-    headers['content-type']='application/json';
-    const b=req.body||{};
-    const payload={
-      fromChainId:Number(b.fromChainId),
-      toChainId:Number(b.toChainId),
-      fromTokenAddress:b.fromTokenAddress,
-      toTokenAddress:b.toTokenAddress,
-      fromAmount:String(b.fromAmount),
-      ...(b.fromAddress?{fromAddress:b.fromAddress,toAddress:b.toAddress||b.fromAddress}:{}),
-      executionType:'all',
-      options:{
-        integrator:INTEGRATOR,
-        fee:0.003,
-        slippage:0.005,
-        order:'CHEAPEST',
-        allowSwitchChain:true,
-        timing:{
-          routeTimingStrategies:[{strategy:'minWaitTime',minWaitTimeMs:1800,startingExpectedResults:6,reduceEveryMs:300}],
-          swapStepTimingStrategies:[{strategy:'minWaitTime',minWaitTimeMs:800,startingExpectedResults:4,reduceEveryMs:250}]
-        }
-      }
-    };
-    let r=await fetch(BASE+'/advanced/routes',{method:'POST',headers,body:JSON.stringify(payload)});
-    let data=await bodyOf(r);
 
-    // Never report "no route" merely because partner monetization was rejected.
-    // Retry exact route discovery without the fee, but mark those routes non-executable.
-    if(!r.ok || !Array.isArray(data?.routes) || data.routes.length===0){
-      const fallback={...payload,options:{...payload.options}};
-      delete fallback.options.fee;
-      r=await fetch(BASE+'/advanced/routes',{method:'POST',headers,body:JSON.stringify(fallback)});
-      data=await bodyOf(r);
-      if(r.ok && Array.isArray(data?.routes) && data.routes.length){
-        data._deadPixels={feeApplied:false,routeRecovered:true};
-        return res.status(200).json(data);
-      }
-    } else {
-      data._deadPixels={feeApplied:true,routeRecovered:false};
+  try{
+    const rawPath=req.query?.path;
+    const path=Array.isArray(rawPath)?rawPath.join('/'):String(rawPath||'');
+    if(!path||path.includes('..')||!/^[-A-Za-z0-9_./]+$/.test(path)){
+      return res.status(400).json({message:'Invalid LI.FI API path'});
     }
-    return res.status(r.status).json(data);
+
+    const qs=new URLSearchParams();
+    for(const [key,value] of Object.entries(req.query||{})) appendQuery(qs,key,value);
+    const target=`${UPSTREAM}/${path}${qs.toString()?`?${qs.toString()}`:''}`;
+
+    const headers={
+      accept:req.headers.accept||'application/json',
+      'content-type':req.headers['content-type']||'application/json'
+    };
+    if(process.env.LIFI_API_KEY) headers['x-lifi-api-key']=process.env.LIFI_API_KEY;
+
+    const init={method:req.method,headers,signal:AbortSignal.timeout(25000)};
+    if(!['GET','HEAD'].includes(req.method) && req.body!==undefined && req.body!==null){
+      init.body=typeof req.body==='string'?req.body:JSON.stringify(req.body);
+    }
+
+    const upstream=await fetch(target,init);
+    const body=await upstream.text();
+    res.status(upstream.status);
+    res.setHeader('cache-control','no-store');
+    const contentType=upstream.headers.get('content-type');
+    if(contentType) res.setHeader('content-type',contentType);
+    return res.send(body);
+  }catch(error){
+    console.error('LI.FI proxy error',error);
+    return res.status(502).json({message:'LI.FI upstream request failed'});
   }
-  return res.status(400).json({message:'Unknown LI.FI action'});
- }catch(e){return res.status(500).json({message:e?.message||'LI.FI proxy failed'})}
 }
