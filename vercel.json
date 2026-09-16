@@ -1,8 +1,8 @@
 {
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+  "$schema":"https://openapi.vercel.sh/vercel.json",
+  "routes":[
+    {"src":"/api/lifi/(?<path>.*)","dest":"/api/lifi.js?path=$path"},
+    {"handle":"filesystem"},
+    {"src":"/(.*)","dest":"/index.html"}
   ]
 }
