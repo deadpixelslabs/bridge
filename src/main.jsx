@@ -1,99 +1,53 @@
-import React, { useMemo } from 'react';
-import ReactDOM from 'react-dom/client';
-import { LiFiWidget } from '@lifi/widget';
-import './style.css';
+import React,{useMemo}from'react';
+import ReactDOM from'react-dom/client';
+import{LiFiWidget}from'@lifi/widget';
+import'./style.css';
 
-const TREASURY = '0xc225b514223ad76d0792ececd836ad922b6d0673';
-const ROBINHOOD_CHAIN_ID = 4663;
-const ARC_CHAIN_ID = 5042;
+const INTEGRATOR='dead-pixels-bridge';
+const TREASURY='0xc225b514223ad76d0792ececd836ad922b6d0673';
+const RH=4663, ARC=5042;
 
-function App() {
-  const config = useMemo(() => ({
-    appearance: 'dark',
-    variant: 'compact',
-    fromChain: ROBINHOOD_CHAIN_ID,
-    toChain: ARC_CHAIN_ID,
-    fee: 0.003,
-    buildUrl: true,
-    theme: {
-      container: {
-        borderRadius: '22px',
-        boxShadow: '0 22px 70px rgba(0,0,0,.5)',
-      },
-      palette: {
-        primary: { main: '#ff2b2b' },
-        secondary: { main: '#ffffff' },
-      },
-      shape: {
-        borderRadius: 14,
-        borderRadiusSecondary: 10,
-      },
-      typography: {
-        fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      },
-    },
-  }), []);
-
-  return (
-    <main className="shell">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="DEAD PIXELS Bridge">
-          <span className="mark"><i></i><i></i><i></i><i></i></span>
-          <span>DEAD PIXELS <b>BRIDGE</b></span>
-        </a>
-        <div className="status"><span></span> NON-CUSTODIAL</div>
-      </header>
-
-      <section className="hero">
-        <div className="eyebrow">CROSS-CHAIN ROUTER</div>
-        <h1>MOVE ASSETS.<br/><em>BREAK BORDERS.</em></h1>
-        <p>Route assets across supported networks with live liquidity and execution powered by LI.FI.</p>
-
-        <div className="chips">
-          <span>Robinhood Chain</span><b>↔</b><span>Arc</span>
-          <small>+ all supported LI.FI networks</small>
-        </div>
-      </section>
-
-      <section className="bridgeGrid">
-        <aside className="infoCard">
-          <div>
-            <span className="num">01</span>
-            <h3>Best available route</h3>
-            <p>Routes are discovered in real time. If no executable route exists, no transaction is offered.</p>
-          </div>
-          <div>
-            <span className="num">02</span>
-            <h3>Your wallet stays yours</h3>
-            <p>DEAD PIXELS does not custody user funds. Transactions execute through the route shown before confirmation.</p>
-          </div>
-          <div>
-            <span className="num">03</span>
-            <h3>Transparent fee</h3>
-            <p>DEAD PIXELS integrator fee: <strong>0.30%</strong>. Provider, gas and route costs are shown by the routing interface.</p>
-          </div>
-        </aside>
-
-        <div className="widgetWrap">
-          <div className="widgetHead">
-            <div>
-              <small>BRIDGE / SWAP</small>
-              <strong>Choose your route</strong>
-            </div>
-            <span>LIVE</span>
-          </div>
-          <LiFiWidget integrator="dead-pixels-bridge" config={config} />
-          <div className="powered">DEAD PIXELS LABS <span>×</span> POWERED BY LI.FI</div>
-        </div>
-      </section>
-
-      <footer>
-        <div>DEAD PIXELS LABS</div>
-        <p>Cross-chain transactions carry smart-contract, liquidity, slippage and third-party provider risk. Always verify the route and destination before signing.</p>
-        <div className="treasury">TREASURY · {TREASURY.slice(0,8)}…{TREASURY.slice(-6)}</div>
-      </footer>
-    </main>
-  );
+function App(){
+ const config=useMemo(()=>({
+  appearance:'dark',
+  variant:'compact',
+  fromChain:RH,
+  toChain:ARC,
+  buildUrl:true,
+  routePriority:'RECOMMENDED',
+  feeConfig:{
+   fee:0.003,
+   name:'DEAD PIXELS fee',
+   showFeePercentage:true,
+   showFeeTooltip:true
+  },
+  theme:{
+   container:{borderRadius:'22px',boxShadow:'0 24px 80px rgba(0,0,0,.55)'},
+   palette:{primary:{main:'#ff2b2b'},secondary:{main:'#fff'}},
+   shape:{borderRadius:14,borderRadiusSecondary:10},
+   typography:{fontFamily:'Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'}
+  }
+ }),[]);
+ return <main className="shell">
+  <header className="top"><a className="brand" href="/"><img src="/favicon.svg"/> <span>DEAD PIXELS <b>BRIDGE</b></span></a>
+   <div className="secure"><i/> NON-CUSTODIAL</div></header>
+  <section className="hero"><div className="eyebrow">DEAD PIXELS LABS / CROSS-CHAIN</div>
+   <h1>BRIDGE THE<br/><em>GLITCH.</em></h1>
+   <p>Move assets across supported networks through live LI.FI routing. Your wallet stays in control.</p>
+   <div className="route"><span>Robinhood Chain</span><b>↔</b><span>Arc</span><small>default route</small></div>
+  </section>
+  <section className="layout">
+   <aside>
+    <div><label>01</label><h3>Live routing</h3><p>Routes are fetched at transaction time. No executable route means no transaction is offered.</p></div>
+    <div><label>02</label><h3>0.30% platform fee</h3><p>DEAD PIXELS fee is disclosed in the LI.FI route details. Network and provider costs remain separate.</p></div>
+    <div><label>03</label><h3>Non-custodial</h3><p>We do not hold bridge deposits. Review the destination, token, route and received amount before signing.</p></div>
+   </aside>
+   <div className="card"><div className="cardHead"><div><small>BRIDGE / SWAP</small><strong>Cross-chain execution</strong></div><span>LIVE</span></div>
+    <LiFiWidget integrator={INTEGRATOR} config={config}/>
+    <div className="powered">POWERED BY <b>LI.FI</b> · INTEGRATOR <b>{INTEGRATOR}</b></div>
+   </div>
+  </section>
+  <footer><strong>DEAD PIXELS LABS</strong><p>Cross-chain transactions involve smart-contract, liquidity, slippage and third-party provider risk. Verify every transaction before signing.</p><code>{TREASURY.slice(0,8)}…{TREASURY.slice(-6)}</code></footer>
+ </main>
 }
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);

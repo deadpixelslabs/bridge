@@ -1,27 +1,32 @@
-# DEAD PIXELS Bridge
+# DEAD PIXELS Bridge — Production
 
-Production-ready Vite + React frontend using the official LI.FI Widget.
+## Locked configuration
+- Integrator: `dead-pixels-bridge`
+- Integrator fee: `0.003` = 0.30%
+- EVM treasury configured in LI.FI Partner Portal:
+  `0xc225b514223ad76d0792ececd836ad922b6d0673`
+- Default: Robinhood Chain `4663` → Arc `5042`
+- Execution UI: official LI.FI Widget
+- Favicon included: `/public/favicon.svg`
 
-## Locked settings
-- Default route: Robinhood Chain (4663) → Arc (5042)
-- DEAD PIXELS integrator fee: 0.30%
-- Treasury: 0xc225b514223ad76d0792ececd836ad922b6d0673
-- Integrator slug in code: `dead-pixels-bridge`
+## Vercel
+Environment variable:
+`LIFI_API_KEY=<your LI.FI key>` (Production; never prefix it with VITE_)
 
-## Important: activate fee collection
-The treasury address shown in the site does NOT by itself redirect fees. Register/verify the integrator in the LI.FI Partner Portal and configure the fee wallet there for the integrator used by this app. Keep the `fee: 0.003` setting.
+Then deploy/redeploy:
+- Framework: Vite
+- Build: `npm run build`
+- Output: `dist`
 
-## Run locally (Windows PowerShell)
-npm install
-npm run dev
+The server-side `/api/quote` proxy uses `process.env.LIFI_API_KEY`, forces
+`integrator=dead-pixels-bridge` and `fee=0.003`, and never returns the API key.
 
-## Deploy to Vercel
-1. Extract this ZIP.
-2. Import the folder/repository into Vercel.
-3. Framework preset: Vite.
-4. Build command: `npm run build`
-5. Output directory: `dist`
-6. Add `bridge.deadpixelslabs.com` in Vercel Domains and point the DNS record as instructed by Vercel.
+The embedded official LI.FI Widget handles its own route fetching/execution and uses
+the registered integrator + feeConfig. The proxy is available for custom quote UI/API
+work without exposing the private key.
 
-## Route behavior
-The app defaults to Robinhood → Arc but leaves all LI.FI-supported networks available. If LI.FI cannot produce an executable route, the widget will not fabricate one.
+## Local
+`npm install`
+`npm run dev`
+
+Do not put the LI.FI API key in any `VITE_*` variable or frontend source file.
