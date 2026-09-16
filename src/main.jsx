@@ -15,6 +15,10 @@ function App(){
    variant:'wide',
    buildUrl:true,
    providers:[EthereumProvider()],
+   // GasZip currently returns routes from Arc that can be quoted but revert
+   // during wallet simulation/execution. Exclude it so LI.FI selects another
+   // executable bridge (for example Relay) instead of presenting a dead route.
+   bridges:{deny:['gasZipBridge']},
    sdkConfig:{
      apiUrl:`${window.location.origin}/api/lifi`,
      // LI.FI reads displayed balances through its SDK public client, not
