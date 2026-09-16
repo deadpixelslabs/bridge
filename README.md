@@ -49,3 +49,13 @@ The UI discovers Across-supported chains/tokens dynamically; unsupported routes 
 - Uses the connected EIP-1193 browser wallet. No private key and no Circle API key are embedded.
 - Circle flow is native USDC burn-and-mint via CCTP and shows explicit mainnet confirmation before execution.
 - LI.FI and Across remain available.
+
+
+## V6 — LI.FI / Jumper parity fix
+The LI.FI widget now explicitly enables `useRelayerRoutes: true` and
+`useRecommendedRoute: true`. This matters for routes surfaced by Jumper
+through LI.FI Intents / relayer execution. Arc mainnet remains chain ID 5042.
+No chain allowlist is applied, so the widget can discover every chain/token
+currently returned by LI.FI. The 0.30% DEAD PIXELS integrator fee remains.
+Across remains separate; Arc should not be advertised through Across until
+Across itself returns Arc from its live Swap API.
