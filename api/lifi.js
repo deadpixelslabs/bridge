@@ -12,13 +12,20 @@ export default async function handler(req,res){
   else if(q.action==='quote') url=BASE+'/quote?'+qs({
     fromChain:q.fromChain,toChain:q.toChain,fromToken:q.fromToken,toToken:q.toToken,
     fromAmount:q.fromAmount,fromAddress:q.fromAddress,toAddress:q.toAddress,
-    integrator:INTEGRATOR,fee:'0.003',slippage:'0.005',order:'RECOMMENDED'
+    integrator:INTEGRATOR,fee:'0.003',slippage:'0.005',order:'CHEAPEST'
   });
   else return res.status(400).json({message:'Unknown LI.FI action'});
   const r=await fetch(url,{headers});
   const text=await r.text();
   let data;try{data=JSON.parse(text)}catch{data={message:text||'Invalid LI.FI response'}}
   res.setHeader('Cache-Control','no-store');
+  if(!r.ok){
+   return res.status(r.status).json({
+     message:data?.message||data?.error?.message||data?.error||'LI.FI quote request failed',
+     lifi:data,
+     request:{action:q.action,fromChain:q.fromChain,toChain:q.toChain,fromToken:q.fromToken,toToken:q.toToken}
+   });
+  }
   return res.status(r.status).json(data);
  }catch(e){return res.status(500).json({message:e?.message||'LI.FI proxy failed'})}
 }
