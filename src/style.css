@@ -23,10 +23,6 @@
 .circleEvents span{display:block;color:#999;font-size:9px;padding:2px 0}
 @media(max-width:650px){.providerTabs.three{grid-template-columns:repeat(3,1fr)}}
 
-.lifiLive{
- display:flex;align-items:center;gap:7px;
- border:1px solid #3c2410;background:#140c06;color:#ffb15b;
- border-radius:10px;padding:9px 11px;margin-bottom:10px;
- font-size:9px;font-weight:900;letter-spacing:.055em
-}
-.lifiLive i{width:7px;height:7px;border-radius:50%;background:#35d07f;box-shadow:0 0 10px #35d07f}
+.lifiNative .bal{float:right;color:#8f8f8f;font-size:10px;font-weight:700}
+.lifiNative select{max-width:100%}
+.lifiNative .quote{margin-top:10px}

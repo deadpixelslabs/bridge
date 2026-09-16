@@ -51,11 +51,22 @@ The UI discovers Across-supported chains/tokens dynamically; unsupported routes 
 - LI.FI and Across remain available.
 
 
-## V6 — LI.FI / Jumper parity fix
-The LI.FI widget now explicitly enables `useRelayerRoutes: true` and
-`useRecommendedRoute: true`. This matters for routes surfaced by Jumper
-through LI.FI Intents / relayer execution. Arc mainnet remains chain ID 5042.
-No chain allowlist is applied, so the widget can discover every chain/token
-currently returned by LI.FI. The 0.30% DEAD PIXELS integrator fee remains.
-Across remains separate; Arc should not be advertised through Across until
-Across itself returns Arc from its live Swap API.
+## V7 — Native LI.FI SDK rebuild
+The embedded LI.FI Widget has been removed from the LI.FI tab.
+V7 uses:
+- server-side LI.FI `/chains`, `/tokens`, and `/quote` proxy (`LIFI_API_KEY` never reaches the browser)
+- `@lifi/sdk` 4.x + `@lifi/sdk-provider-ethereum`
+- injected EVM wallet via Viem
+- direct source-chain balance reads
+- LI.FI SDK route execution/progress
+- 0.30% integrator fee requested on live LI.FI quotes
+- no hardcoded chain allowlist; EVM chains are discovered from LI.FI
+
+Regression tests after deployment:
+1. Robinhood (4663) USDG -> Base (8453) USDC, 100
+2. Robinhood (4663) USDG -> Arc (5042) USDC, 100
+3. Base USDC -> Arc USDC
+4. Arc USDC -> Robinhood supported token
+5. Wallet balance must populate after selecting source token
+
+Do not announce a route as available unless the live LI.FI quote returns it.

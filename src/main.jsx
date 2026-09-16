@@ -1,6 +1,8 @@
 import React,{useEffect,useMemo,useState}from'react';
 import ReactDOM from'react-dom/client';
-import{LiFiWidget}from'@lifi/widget';
+import{createClient,convertQuoteToRoute,executeRoute}from'@lifi/sdk';
+import{EthereumProvider}from'@lifi/sdk-provider-ethereum';
+import{createWalletClient,custom}from'viem';
 import{BridgeKit}from'@circle-fin/bridge-kit';
 import{createViemAdapterFromProvider}from'@circle-fin/adapter-viem-v2';
 import'./style.css';
@@ -198,41 +200,217 @@ function CirclePanel(){
  </div>
 }
 
+
+function LiFiNativePanel(){
+ const[account,setAccount]=useState('');
+ const[chains,setChains]=useState([]);
+ const[fromChain,setFromChain]=useState(RH);
+ const[toChain,setToChain]=useState(ARC);
+ const[fromTokens,setFromTokens]=useState([]);
+ const[toTokens,setToTokens]=useState([]);
+ const[fromToken,setFromToken]=useState('');
+ const[toToken,setToToken]=useState('');
+ const[amount,setAmount]=useState('');
+ const[balance,setBalance]=useState('—');
+ const[quote,setQuote]=useState(null);
+ const[busy,setBusy]=useState(false);
+ const[msg,setMsg]=useState('');
+ const[progress,setProgress]=useState([]);
+
+ async function api(params){
+   const r=await fetch('/api/lifi?'+new URLSearchParams(params));
+   const j=await r.json();
+   if(!r.ok)throw Error(j?.message||j?.error||`LI.FI request failed (${r.status})`);
+   return j;
+ }
+ const chainName=id=>chains.find(c=>Number(c.id)===Number(id))?.name||String(id);
+ const chainObj=id=>chains.find(c=>Number(c.id)===Number(id));
+ const tokenBy=(list,address)=>list.find(t=>String(t.address).toLowerCase()===String(address).toLowerCase());
+ const fromT=tokenBy(fromTokens,fromToken), toT=tokenBy(toTokens,toToken);
+
+ async function connect(){
+   if(!window.ethereum)return setMsg('Install MetaMask, Rabby, or another EVM wallet first.');
+   try{
+     const a=await window.ethereum.request({method:'eth_requestAccounts'});
+     setAccount(a?.[0]||''); setMsg('');
+   }catch(e){setMsg(e?.message||'Wallet connection failed')}
+ }
+
+ useEffect(()=>{
+   api({action:'chains'}).then(x=>{
+     const list=(x?.chains||x||[]).filter(c=>String(c.chainType||'EVM').toUpperCase()==='EVM');
+     setChains(list);
+   }).catch(e=>setMsg(e.message));
+   if(window.ethereum){
+     window.ethereum.request({method:'eth_accounts'}).then(a=>setAccount(a?.[0]||'')).catch(()=>{});
+     const onAcc=a=>{setAccount(a?.[0]||'');setQuote(null)};
+     window.ethereum.on?.('accountsChanged',onAcc);
+     return()=>window.ethereum.removeListener?.('accountsChanged',onAcc);
+   }
+ },[]);
+
+ useEffect(()=>{
+   setFromToken('');setQuote(null);setBalance('—');
+   api({action:'tokens',chainId:String(fromChain)}).then(x=>{
+     const list=x?.tokens?.[fromChain]||x?.tokens?.[String(fromChain)]||x?.tokens||x||[];
+     const arr=Array.isArray(list)?list:[];
+     setFromTokens(arr);
+     const preferred=arr.find(t=>t.symbol==='USDG')||arr.find(t=>t.symbol==='USDC')||arr.find(t=>t.symbol==='ETH')||arr[0];
+     if(preferred)setFromToken(preferred.address);
+   }).catch(e=>{setFromTokens([]);setMsg(e.message)});
+ },[fromChain]);
+
+ useEffect(()=>{
+   setToToken('');setQuote(null);
+   api({action:'tokens',chainId:String(toChain)}).then(x=>{
+     const list=x?.tokens?.[toChain]||x?.tokens?.[String(toChain)]||x?.tokens||x||[];
+     const arr=Array.isArray(list)?list:[];
+     setToTokens(arr);
+     const preferred=arr.find(t=>t.symbol==='USDC')||arr.find(t=>t.symbol==='ETH')||arr[0];
+     if(preferred)setToToken(preferred.address);
+   }).catch(e=>{setToTokens([]);setMsg(e.message)});
+ },[toChain]);
+
+ async function switchTo(id){
+   if(!window.ethereum)throw Error('EVM wallet not found');
+   const c=chainObj(id);
+   try{
+     await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex(id)}]});
+   }catch(e){
+     if(e?.code!==4902||!c)throw e;
+     const rpc=(c.metamask?.rpcUrls||c.rpcUrls||c.rpc||[]).filter(Boolean);
+     const explorer=(c.metamask?.blockExplorerUrls||c.blockExplorerUrls||[]).filter(Boolean);
+     await window.ethereum.request({method:'wallet_addEthereumChain',params:[{
+       chainId:hex(id),chainName:c.name||`Chain ${id}`,
+       nativeCurrency:c.nativeToken?{name:c.nativeToken.name||c.nativeToken.symbol,symbol:c.nativeToken.symbol,decimals:c.nativeToken.decimals||18}:{name:'Native',symbol:'ETH',decimals:18},
+       rpcUrls:rpc.slice(0,3),blockExplorerUrls:explorer.slice(0,2)
+     }]});
+   }
+ }
+
+ async function readBalance(){
+   if(!account||!fromT||!window.ethereum)return setBalance('—');
+   try{
+     await switchTo(fromChain);
+     let raw;
+     if(String(fromT.address).toLowerCase()===ZERO){
+       raw=await window.ethereum.request({method:'eth_getBalance',params:[account,'latest']});
+     }else{
+       const data='0x70a08231'+account.slice(2).padStart(64,'0');
+       raw=await window.ethereum.request({method:'eth_call',params:[{to:fromT.address,data},'latest']});
+     }
+     setBalance(fmt(raw,Number(fromT.decimals||18)));
+   }catch(e){setBalance('unavailable');setMsg(e?.message||'Could not read wallet balance')}
+ }
+ useEffect(()=>{if(account&&fromT)readBalance()},[account,fromToken,fromChain]);
+
+ async function getQuoteNow(){
+   if(!account)return setMsg('Connect wallet first.');
+   if(!fromT||!toT||!amount||Number(amount)<=0)return setMsg('Choose tokens and enter an amount.');
+   setBusy(true);setMsg('');setQuote(null);setProgress([]);
+   try{
+     const q=await api({
+       action:'quote',
+       fromChain:String(fromChain),toChain:String(toChain),
+       fromToken:fromT.address,toToken:toT.address,
+       fromAmount:units(amount,Number(fromT.decimals||18)),
+       fromAddress:account,toAddress:account
+     });
+     setQuote(q);
+   }catch(e){setMsg(e?.message||'No executable LI.FI route returned.')}
+   finally{setBusy(false)}
+ }
+
+ function viemChain(id){
+   const c=chainObj(id);
+   const urls=(c?.metamask?.rpcUrls||c?.rpcUrls||c?.rpc||[]).filter(Boolean);
+   const explorers=(c?.metamask?.blockExplorerUrls||c?.blockExplorerUrls||[]).filter(Boolean);
+   return {
+     id:Number(id),name:c?.name||`Chain ${id}`,
+     nativeCurrency:c?.nativeToken?{name:c.nativeToken.name||c.nativeToken.symbol,symbol:c.nativeToken.symbol,decimals:Number(c.nativeToken.decimals||18)}:{name:'Native',symbol:'ETH',decimals:18},
+     rpcUrls:{default:{http:urls.length?urls:['https://rpc.ankr.com/eth']}},
+     blockExplorers:explorers[0]?{default:{name:'Explorer',url:explorers[0]}}:undefined
+   };
+ }
+
+ async function walletClient(id){
+   if(!window.ethereum)throw Error('EVM wallet not found');
+   await switchTo(id);
+   const accounts=await window.ethereum.request({method:'eth_accounts'});
+   return createWalletClient({account:accounts[0],chain:viemChain(id),transport:custom(window.ethereum)});
+ }
+
+ async function execute(){
+   if(!quote)return;
+   setBusy(true);setMsg('');setProgress(['Preparing LI.FI route…']);
+   try{
+     const evm=EthereumProvider({
+       getWalletClient:()=>walletClient(fromChain),
+       switchChain:(id)=>walletClient(id)
+     });
+     const client=createClient({
+       integrator:INTEGRATOR,
+       providers:[evm],
+       routeOptions:{fee:0.003}
+     });
+     const route=convertQuoteToRoute(quote);
+     const result=await executeRoute(client,route,{
+       updateRouteHook:r=>{
+         const states=(r?.steps||[]).flatMap(st=>(st.execution?.process||[]).map(p=>`${p.type||st.tool||'step'} · ${p.status||'pending'}`));
+         if(states.length)setProgress(states.slice(-6));
+       },
+       acceptExchangeRateUpdateHook:async()=>window.confirm('The exchange rate changed. Continue with the updated route?')
+     });
+     setQuote(null);
+     setMsg('LI.FI route submitted/completed. Check the progress and destination wallet.');
+     await readBalance();
+     return result;
+   }catch(e){setMsg(e?.message||'LI.FI execution failed')}
+   finally{setBusy(false)}
+ }
+
+ const outAmount=quote?.estimate?.toAmount?pretty(quote.estimate.toAmount,Number(toT?.decimals||18),6):'—';
+ const gasUSD=(quote?.estimate?.gasCosts||[]).reduce((a,x)=>a+Number(x.amountUSD||0),0);
+ const feeUSD=(quote?.estimate?.feeCosts||[]).reduce((a,x)=>a+Number(x.amountUSD||0),0);
+ const eta=quote?.estimate?.executionDuration;
+ return <div className="acrossBox lifiNative">
+   <div className="acrossTop"><div><small>LI.FI NATIVE SDK / LIVE API</small><strong>Any supported EVM chain ↔ any supported EVM chain</strong></div><button onClick={connect}>{account?short(account):'Connect wallet'}</button></div>
+   <div className="circleLive"><i/> DIRECT LI.FI ROUTING · NO EMBEDDED WIDGET</div>
+   <div className="two">
+    <label>From chain<select value={fromChain} onChange={e=>setFromChain(Number(e.target.value))}>{chains.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+    <label>To chain<select value={toChain} onChange={e=>setToChain(Number(e.target.value))}>{chains.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+   </div>
+   <div className="two">
+    <label>From token<select value={fromToken} onChange={e=>{setFromToken(e.target.value);setQuote(null)}}>{fromTokens.map(t=><option key={t.address} value={t.address}>{t.symbol} · {t.name}</option>)}</select></label>
+    <label>To token<select value={toToken} onChange={e=>{setToToken(e.target.value);setQuote(null)}}>{toTokens.map(t=><option key={t.address} value={t.address}>{t.symbol} · {t.name}</option>)}</select></label>
+   </div>
+   <label>Amount <span className="bal">Balance: {balance} {fromT?.symbol||''}</span><input inputMode="decimal" placeholder="0.00" value={amount} onChange={e=>{setAmount(e.target.value);setQuote(null)}}/></label>
+   {!quote?<button className="primary" disabled={busy} onClick={getQuoteNow}>{busy?'Finding live LI.FI route…':'Find best live route'}</button>:
+    <div className="quote">
+      <b>{fromT?.symbol} on {chainName(fromChain)} → {toT?.symbol} on {chainName(toChain)}</b>
+      <div className="breakdown">
+       <span><i>Receive</i><strong>{outAmount} {toT?.symbol}</strong></span>
+       <span><i>Route</i><strong>{quote.toolDetails?.name||quote.tool||'LI.FI'}</strong></span>
+       <span><i>Gas + provider fees</i><strong>{money(gasUSD+feeUSD)||'See wallet'}</strong></span>
+       <span><i>ETA</i><strong>{eta?`~${eta}s`:'Live estimate'}</strong></span>
+      </div>
+      <div className="mainnetWarn">MAINNET · 0.30% DEAD PIXELS integrator fee is requested in the LI.FI quote. Verify the final wallet prompt before signing.</div>
+      <button className="primary" disabled={busy} onClick={execute}>{busy?'Executing route…':'Review & execute with LI.FI'}</button>
+    </div>}
+   {progress.length>0&&<div className="circleEvents">{progress.map((x,i)=><span key={i}>{x}</span>)}</div>}
+   {msg&&<div className="msg">{msg}</div>}
+   <div className="fine">Chains, tokens and quotes come from LI.FI live APIs. Balance is read directly from the selected source chain through your connected wallet.</div>
+ </div>
+}
+
 function App(){
  const[provider,setProvider]=useState('circle');
- const config=useMemo(()=>({
-   appearance:'dark',
-   variant:'compact',
-   fromChain:RH,
-   toChain:ARC,
-   buildUrl:true,
-   routePriority:'RECOMMENDED',
-   useRecommendedRoute:true,
-   useRelayerRoutes:true,
-   poweredBy:'jumper',
-   feeConfig:{
-     fee:0.003,
-     name:'DEAD PIXELS fee',
-     showFeePercentage:true,
-     showFeeTooltip:true
-   },
-   theme:{
-     container:{borderRadius:'22px',boxShadow:'0 24px 80px rgba(0,0,0,.55)'},
-     palette:{primary:{main:'#ff2b2b'},secondary:{main:'#fff'}},
-     shape:{borderRadius:14,borderRadiusSecondary:10},
-     typography:{fontFamily:'Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'}
-   }
- }),[]);
  return <main className="shell">
   <header className="top"><a className="brand" href="/"><img src="/favicon.svg"/><span>DEAD PIXELS <b>BRIDGE</b></span></a><div className="headerActions"><a className="friendsLink" href="https://opensea.io/collection/friends-pixels/overview" target="_blank" rel="noopener noreferrer">FRIENDS PIXELS ↗</a><div className="secure"><i/> NON-CUSTODIAL</div></div></header>
   <section className="hero"><div className="eyebrow">DEAD PIXELS LABS / CROSS-CHAIN</div><h1>BRIDGE THE<br/><em>GLITCH.</em></h1><p>Three bridge engines. Circle CCTP brings native USDC routing to ARC.</p><div className="route"><span>Circle</span><b>+</b><span>LI.FI</span><b>+</b><span>Across</span><small>live route discovery</small></div></section>
-  <section className="layout"><aside><div><label>01</label><h3>Three providers</h3><p>LI.FI now includes Intents/relayer routes used by Jumper, plus Circle CCTP and Across.</p></div><div><label>02</label><h3>Native USDC to ARC</h3><p>Circle CCTP burns USDC on the source chain and mints native USDC on the destination.</p></div><div><label>03</label><h3>Live routing</h3><p>LI.FI recommended + relayer routes are enabled. Arc mainnet chain ID 5042 is preselected.</p></div></aside>
+  <section className="layout"><aside><div><label>01</label><h3>Three providers</h3><p>Circle CCTP for native USDC, native LI.FI SDK routing, plus Across.</p></div><div><label>02</label><h3>Native USDC to ARC</h3><p>Circle CCTP burns USDC on the source chain and mints native USDC on the destination.</p></div><div><label>03</label><h3>Live only</h3><p>LI.FI chains, tokens, balances and quotes are loaded live. No hardcoded route allowlist.</p></div></aside>
    <div className="card"><div className="providerTabs three"><button className={provider==='circle'?'active circleActive':''} onClick={()=>setProvider('circle')}>CIRCLE</button><button className={provider==='lifi'?'active':''} onClick={()=>setProvider('lifi')}>LI.FI</button><button className={provider==='across'?'active':''} onClick={()=>setProvider('across')}>ACROSS</button></div>
-    {provider==='circle'?<CirclePanel/>:provider==='lifi'?<>
-      <div className="lifiLive"><i/> LI.FI INTENTS + RELAYER ROUTES ENABLED · ARC 5042</div>
-      <LiFiWidget integrator={INTEGRATOR} config={config}/>
-      <div className="powered">POWERED BY <b>LI.FI / JUMPER ROUTING</b> · {INTEGRATOR}</div>
-    </>:<AcrossPanel/>}
+    {provider==='circle'?<CirclePanel/>:provider==='lifi'?<LiFiNativePanel/>:<AcrossPanel/>}
    </div>
   </section>
   <footer><strong>DEAD PIXELS LABS</strong><p>Cross-chain transactions involve smart-contract, liquidity, slippage and third-party provider risk. Verify every transaction before signing.</p><code>{TREASURY.slice(0,8)}…{TREASURY.slice(-6)}</code></footer>
