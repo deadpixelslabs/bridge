@@ -9,6 +9,25 @@ function appendQuery(searchParams,key,value){
   }
 }
 
+function makeHeaders(req,includeApiKey=true){
+  const headers={
+    accept:req.headers.accept||'application/json',
+    'content-type':req.headers['content-type']||'application/json'
+  };
+  if(includeApiKey&&process.env.LIFI_API_KEY) headers['x-lifi-api-key']=process.env.LIFI_API_KEY;
+  return headers;
+}
+
+async function callUpstream(target,req,body,includeApiKey=true){
+  const init={
+    method:req.method,
+    headers:makeHeaders(req,includeApiKey),
+    signal:AbortSignal.timeout(25000)
+  };
+  if(!['GET','HEAD'].includes(req.method)&&body!==undefined) init.body=body;
+  return fetch(target,init);
+}
+
 export default async function handler(req,res){
   if(req.method==='OPTIONS'){
     res.setHeader('Allow','GET,POST,PUT,PATCH,DELETE,OPTIONS');
@@ -25,25 +44,29 @@ export default async function handler(req,res){
     const qs=new URLSearchParams();
     for(const [key,value] of Object.entries(req.query||{})) appendQuery(qs,key,value);
     const target=`${UPSTREAM}/${path}${qs.toString()?`?${qs.toString()}`:''}`;
+    const body=!['GET','HEAD'].includes(req.method)&&req.body!==undefined&&req.body!==null
+      ?(typeof req.body==='string'?req.body:JSON.stringify(req.body))
+      :undefined;
 
-    const headers={
-      accept:req.headers.accept||'application/json',
-      'content-type':req.headers['content-type']||'application/json'
-    };
-    if(process.env.LIFI_API_KEY) headers['x-lifi-api-key']=process.env.LIFI_API_KEY;
+    let upstream=await callUpstream(target,req,body,true);
 
-    const init={method:req.method,headers,signal:AbortSignal.timeout(25000)};
-    if(!['GET','HEAD'].includes(req.method) && req.body!==undefined && req.body!==null){
-      init.body=typeof req.body==='string'?req.body:JSON.stringify(req.body);
+    // A stale/misconfigured partner key must never take the bridge down.
+    // LI.FI production API is usable without a key at the public rate limit,
+    // so retry auth failures once without the key.
+    if(process.env.LIFI_API_KEY&&(upstream.status===401||upstream.status===403)){
+      upstream=await callUpstream(target,req,body,false);
+      res.setHeader('x-deadpixels-lifi-auth','public-fallback');
+    }else{
+      res.setHeader('x-deadpixels-lifi-auth',process.env.LIFI_API_KEY?'partner-key':'public');
     }
 
-    const upstream=await fetch(target,init);
-    const body=await upstream.text();
+    const responseBody=await upstream.text();
     res.status(upstream.status);
     res.setHeader('cache-control','no-store');
+    res.setHeader('x-deadpixels-lifi-proxy','v2');
     const contentType=upstream.headers.get('content-type');
     if(contentType) res.setHeader('content-type',contentType);
-    return res.send(body);
+    return res.send(responseBody);
   }catch(error){
     console.error('LI.FI proxy error',error);
     return res.status(502).json({message:'LI.FI upstream request failed'});
