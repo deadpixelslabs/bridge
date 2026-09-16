@@ -6,6 +6,8 @@ import'./style.css';
 
 const INTEGRATOR='dead-pixels-bridge';
 const FRIENDS='https://opensea.io/collection/friends-pixels/overview';
+const ARC_MAINNET=5042;
+const ARC_RPC='https://rpc.arc-scan.org';
 
 function App(){
  const config=useMemo(()=>({
@@ -14,7 +16,14 @@ function App(){
    buildUrl:true,
    providers:[EthereumProvider()],
    sdkConfig:{
-     apiUrl:`${window.location.origin}/api/lifi`
+     apiUrl:`${window.location.origin}/api/lifi`,
+     // LI.FI reads displayed balances through its SDK public client, not
+     // directly from the injected wallet. Put a browser-safe Arc RPC first
+     // so ERC-20 USDC balanceOf() at 0x3600… works reliably on chain 5042.
+     // LI.FI's own chain RPCs are appended as fallbacks by the SDK.
+     rpcUrls:{
+       [ARC_MAINNET]:[ARC_RPC]
+     }
    },
    theme:{
      palette:{mode:'dark',primary:{main:'#8b5cf6'},secondary:{main:'#ef4444'},background:{default:'#09090b',paper:'#15111b'}},
