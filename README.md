@@ -80,3 +80,13 @@ the UI/API response instead of masking them.
 
 Note: a displayed zero source-token balance can be correct. Route discovery
 does not require the wallet to hold the quoted amount; execution does.
+
+
+## V9 — Jumper-parity route discovery fix
+- Adds `skipSimulation=true` to LI.FI quote discovery. LI.FI documents that quote
+  transaction responses are simulated by default; this can reject discovery for
+  a connected wallet that does not currently have enough funds.
+- If a monetized 0.30% quote is rejected, V9 retries the exact same transfer
+  without the fee. If that succeeds, the UI explicitly says ROUTE FOUND but
+  disables execution. This isolates LI.FI partner-fee configuration from routing.
+- V9 never silently executes a fee-less fallback route.

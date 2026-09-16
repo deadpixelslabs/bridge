@@ -369,6 +369,7 @@ function LiFiNativePanel(){
    finally{setBusy(false)}
  }
 
+ const feeBlocked=quote?._deadPixels?.routeRecovered===true;
  const outAmount=quote?.estimate?.toAmount?pretty(quote.estimate.toAmount,Number(toT?.decimals||18),6):'—';
  const gasUSD=(quote?.estimate?.gasCosts||[]).reduce((a,x)=>a+Number(x.amountUSD||0),0);
  const feeUSD=(quote?.estimate?.feeCosts||[]).reduce((a,x)=>a+Number(x.amountUSD||0),0);
@@ -394,8 +395,8 @@ function LiFiNativePanel(){
        <span><i>Gas + provider fees</i><strong>{money(gasUSD+feeUSD)||'See wallet'}</strong></span>
        <span><i>ETA</i><strong>{eta?`~${eta}s`:'Live estimate'}</strong></span>
       </div>
-      <div className="mainnetWarn">MAINNET · 0.30% DEAD PIXELS integrator fee is requested in the LI.FI quote. Verify the final wallet prompt before signing.</div>
-      <button className="primary" disabled={busy} onClick={execute}>{busy?'Executing route…':'Review & execute with LI.FI'}</button>
+      <div className="mainnetWarn">{feeBlocked?'ROUTE FOUND · LI.FI accepted this transfer without the partner fee, but rejected the 0.30% monetized quote. Execution is intentionally locked until the integrator fee setup is accepted.':'MAINNET · 0.30% DEAD PIXELS integrator fee is included in this LI.FI quote. Verify the final wallet prompt before signing.'}</div>
+      <button className="primary" disabled={busy||feeBlocked} onClick={execute}>{feeBlocked?'Route found · fee setup needs fix':busy?'Executing route…':'Review & execute with LI.FI'}</button>
     </div>}
    {progress.length>0&&<div className="circleEvents">{progress.map((x,i)=><span key={i}>{x}</span>)}</div>}
    {msg&&<div className="msg">{msg}</div>}
